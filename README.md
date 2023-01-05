@@ -24,7 +24,7 @@ Source: [Wikipedia](https://en.wikipedia.org/wiki/Correlation)
 3. Put your [Nasdaq Data Link](https://data.nasdaq.com/) API key in the `API_KEY` file.
 4. Run `python3 main.py`.
 
-This will print the 
+This will print the correlation matrix and save it to a CSV file.
 
 ## Config
 
