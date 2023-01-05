@@ -20,16 +20,13 @@ This will print the
 
 ## Config
 
-For the configuration, you can:
-
-- Change `config.py` constants.
-- Define new indicators in `indicators.py`.
+For the configuration, you can change `config.py` constants.
 
 ## Config.py Description
 
 - `QUOTES_LIST_WITH_SOURCE`: What are your considered financial indexes?
 - `START_TIME` and `END_TIME`: The time interval for the financial indexes candles
-- `CSV_DELIMITER`: The delimiter in every generated CSV file
+- `CSV_DELIMITER`: The delimiter character in the generated CSV file
 - `API_KEY_FILE_PATH`: Path to the Nasdaq Data Link API key file
 
 ## See Also
