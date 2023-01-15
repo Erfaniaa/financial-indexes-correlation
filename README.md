@@ -17,6 +17,11 @@ Source: [Wikipedia](https://en.wikipedia.org/wiki/Correlation)
 - This project generates practical information for data scientists.
 - You can read the code for educational purposes.
 
+## Sample Correlation Matrix Output
+
+![image](https://user-images.githubusercontent.com/7780269/212567969-1e309001-6683-4ed2-bc0c-4bb2d2f95587.png)
+
+
 ## Run
 
 1. Clone the repository.
