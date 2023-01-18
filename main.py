@@ -1,6 +1,6 @@
 import config
 
-import nasdaqdatalink
+from requests_html import HTMLSession
 import yfinance
 import pandas as pd
 
@@ -23,74 +23,45 @@ def date_range(start_datetime, end_datetime):
         yield start_datetime + datetime.timedelta(i)
 
 
-def fill_missing_data(df, start_time, end_time):
-	start_datetime = date_string_to_datetime(start_time)
-	end_datetime = date_string_to_datetime(end_time)
-	df_new = df[0:0]
-	dates_list = [str(datetime)[:10] for datetime in date_range(start_datetime, end_datetime)]
-	datetimes_list = [datetime for datetime in date_range(start_datetime, end_datetime)]
-	dates_index = 0
-	first_df_row_value = df.iloc[0, 1]
-	while dates_list[dates_index] < str(df.iloc[0, 0])[:10]:
-		new_row = pd.DataFrame({"Date": [datetimes_list[dates_index]],
-								"Value": [first_df_row_value]})
-		df_new = pd.concat([df_new, new_row], axis=0, ignore_index=True)
-		dates_index += 1
-	last_dates_index = dates_index
-	df_index = 0
-	for dates_index in range(last_dates_index, len(dates_list)):
-		if df_index < df.shape[0] and str(df.iloc[df_index, 0])[:10] == dates_list[dates_index]:
-			new_row = pd.DataFrame({"Date": [df.iloc[df_index, 0]],
-									"Value": [df.iloc[df_index, 1]]})
-			df_new = pd.concat([df_new, new_row], axis=0, ignore_index=True)
-			last_new_row_value = df.iloc[df_index, 1]
-			df_index += 1
-		elif df_index >= df.shape[0] or str(df.iloc[df_index, 0])[:10] > dates_list[dates_index]:
-			new_row = pd.DataFrame({"Date": [datetimes_list[dates_index]],
-									"Value": [last_new_row_value]})
-			df_new = pd.concat([df_new, new_row], axis=0, ignore_index=True)
-			if df_index >= df.shape[0]:
-				print("WARNING: Missing data added to the end of the downloaded dataframe. Date:", datetimes_list[dates_index])
-	return df_new
-
-
-def remove_extra_data(df, start_time, end_time):
-	rows_to_be_removed = []
-	for index, row in df.iterrows():
-		if str(row["Date"])[:10] < start_time or str(row["Date"])[:10] > end_time:
-			rows_to_be_removed.append(index)
-	df = df.drop(rows_to_be_removed)
-	return df
-
-
-def get_data_for_quote(quote, column_name, data_source, start_time, end_time):
-	if data_source == "nasdaq-data-link":
-		df = nasdaqdatalink.get(quote, start_date=start_time, end_date=end_time)
-	elif data_source == "yfinance":
-		df = yfinance.download(quote, start=get_next_day_string(start_time), end=get_next_day_string(end_time), interval="1d", auto_adjust=True, prepost=True, threads=True)
+def get_data_for_quote(quote, start_time, end_time):
+	df = yfinance.download(quote, start=get_next_day_string(start_time), end=get_next_day_string(end_time), interval="1d", auto_adjust=True, prepost=True, threads=True)
 	df = df.reset_index()
-	df = df[['Date', column_name]]
-	df = df.rename(columns={column_name: "Value"})
+	df = df.dropna()
+	df = df.loc[~df.apply(lambda row: (row == 0).any(), axis=1)]
+	if df.shape[0] == 0:
+		return df
 	return df
 
 
-def get_values_list_from_dataframe(df):
-	return df["Value"].tolist()
+def get_total_start_and_end_time(moving_average_size):
+	start_time = datetime.datetime.utcnow() + datetime.timedelta(days=-moving_average_size)
+	end_time = datetime.datetime.utcnow() + datetime.timedelta(days=-1)
+	return start_time.strftime("%Y-%m-%d"), end_time.strftime("%Y-%m-%d")
 
 
-def get_values_for_quotes_list(quotes_with_column_name_list, start_time, end_time):
+def get_total_crypto_quotes_list(maximum_cryptos_to_consider):
+	html_session = HTMLSession()
+	yfinance_response = html_session.get(f"https://finance.yahoo.com/crypto?offset=0&count={maximum_cryptos_to_consider}")
+	df = pd.read_html(yfinance_response.html.raw_html)               
+	df = df[0].copy()
+	total_crypto_quotes_list = df.Symbol.tolist()
+	return total_crypto_quotes_list
+
+
+def get_values_series_from_dataframe(df, quote_name):
+	return df["Close"].rename(quote_name[:-4])
+
+
+def get_values_for_quotes_list(quote_names_list, start_time, end_time):
 	all_quotes_values_list = []
-	for quote, column_name, data_source in quotes_with_column_name_list:
-		print("Quote:", quote, "(" + str(column_name) + ", " + str(data_source) + ")")
-		df = get_data_for_quote(quote, column_name, data_source, start_time, end_time)
-		print("Data downloaded")
-		df = remove_extra_data(df, start_time, end_time)
-		print("Extra data removed")
-		df = fill_missing_data(df, start_time, end_time)
-		print("Missing data filled")
-		values_list = get_values_list_from_dataframe(df)
+	for quote_name in quote_names_list:
+		print("Quote:", quote_name)
+		df = get_data_for_quote(quote_name, start_time, end_time)
+		print("Data downloaded.")
+		values_series = get_values_series_from_dataframe(df, quote_name)
 		print("_" * 80)
-		all_quotes_values_list.append(values_list)
+		if values_series.shape[0] != 0:
+			all_quotes_values_list.append(values_series)
 	return all_quotes_values_list
 
 
@@ -117,22 +88,20 @@ def concat_datasets(dataset1, dataset2):
 def generate_correlation_matrix(quotes_list, start_time, end_time, output_csv_file_path, output_csv_file_delimiter):
 	all_quotes_values_list = get_values_for_quotes_list(quotes_list, start_time, end_time)
 	df = generate_matrix_from_all_quotes_values(all_quotes_values_list, quotes_list)
-	print(df)
-	print("_" * 80)
 	df.to_csv(output_csv_file_path, sep=output_csv_file_delimiter)
 
 
-def read_api_key(api_key_file_path):
-	nasdaqdatalink.read_key(filename=api_key_file_path)
+def run(look_back_days, maximum_cryptos_to_consider, output_csv_file_path, output_csv_file_delimiter):
+	start_time, end_time = get_total_start_and_end_time(look_back_days)
+	crypto_quotes_list = get_total_crypto_quotes_list(maximum_cryptos_to_consider)
+	generate_correlation_matrix(crypto_quotes_list, start_time, end_time, output_csv_file_path, output_csv_file_delimiter)
 
 
 def main():
-	read_api_key(config.API_KEY_FILE_PATH)
-	generate_correlation_matrix(config.QUOTES_LIST_WITH_SOURCE,
-					 			config.START_TIME,
-					 			config.END_TIME,
-								config.OUTPUT_CSV_FILE_PATH,
-								config.OUTPUT_CSV_FILE_DELIMITER)
+	run(config.LOOK_BACK_DAYS,
+		config.MAXIMUM_CRYPTOS_TO_CONSIDER,
+		config.OUTPUT_CSV_FILE_PATH,
+		config.OUTPUT_CSV_FILE_DELIMITER)
 
 
 if __name__ == "__main__":

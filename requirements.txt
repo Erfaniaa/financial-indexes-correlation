@@ -1,2 +1,3 @@
 Nasdaq-Data-Link
 yfinance
+requests_html
